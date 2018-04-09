@@ -644,7 +644,7 @@ return {
         PRIMARY KEY (partition, id)
       );
 
-      CREATE TABLE IF NOT EXISTS server_names(
+      CREATE TABLE IF NOT EXISTS snis(
         partition text,
         id uuid,
         name text,
@@ -653,8 +653,8 @@ return {
         PRIMARY KEY (partition, id)
       );
 
-      CREATE INDEX IF NOT EXISTS server_names_name_idx ON server_names(name);
-      CREATE INDEX IF NOT EXISTS server_names_certificate_id_idx ON server_names(certificate_id);
+      CREATE INDEX IF NOT EXISTS snis_name_idx ON snis(name);
+      CREATE INDEX IF NOT EXISTS snis_certificate_id_idx ON snis(certificate_id);
     ]],
     down = nil
   },
@@ -707,8 +707,8 @@ return {
         partition_keys = { "name", "ssl_certificate_id" },
       }
 
-      local server_names_def = {
-        name    = "server_names",
+      local snis_def = {
+        name    = "snis",
         columns = {
           partition      = "text",
           id             = "uuid",
@@ -721,8 +721,8 @@ return {
 
       local _, err = migration_helpers.cassandra.copy_records(dao,
         ssl_servers_names_def,
-        server_names_def, {
-          partition      = function() return cassandra.text("server_names") end,
+        snis_def, {
+          partition      = function() return cassandra.text("snis") end,
           id             = function() return cassandra.uuid(utils.uuid(3)) end,
           name           = "name",
           certificate_id = "ssl_certificate_id",

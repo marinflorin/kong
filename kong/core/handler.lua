@@ -257,18 +257,18 @@ return {
 
         cache:invalidate("pem_ssl_certificates:"    .. sn.name)
         cache:invalidate("parsed_ssl_certificates:" .. sn.name)
-      end, "crud", "server_names")
+      end, "crud", "snis")
 
 
       worker_events.register(function(data)
         log(DEBUG, "[events] SSL cert updated, invalidating cached certificates")
         local certificate = data.entity
 
-        local rows, err = db.server_names:for_certificate({
+        local rows, err = db.snis:for_certificate({
           id = certificate.id
         })
         if not rows then
-          log(ERR, "[events] could not find associated server names for certificate: ",
+          log(ERR, "[events] could not find associated snis for certificate: ",
                    err)
         end
 

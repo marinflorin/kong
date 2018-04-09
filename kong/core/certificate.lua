@@ -15,19 +15,19 @@ end
 local _M = {}
 
 
-local function find_certificate(sn)
-  local row, err = singletons.db.server_names:select_by_name(sn)
+local function find_certificate(sni_name)
+  local row, err = singletons.db.snis:select_by_name(sni_name)
   if err then
     return nil, err
   end
 
   if not row then
-    log(DEBUG, "no server name registered for client-provided name: '",
-               sn, "'")
+    log(DEBUG, "no SNI registered for client-provided name: '",
+               sni_name, "'")
     return true
   end
 
-  -- fetch SSL certificate for this server name
+  -- fetch SSL certificate for this sni
 
   local certificate, err = singletons.db.certificates:select(row.certificate)
   if err then
@@ -35,7 +35,7 @@ local function find_certificate(sn)
   end
 
   if not certificate then
-    return nil, "no SSL certificate configured for server name: " .. sn
+    return nil, "no SSL certificate configured for sni: " .. sni_name
   end
 
   return {
@@ -46,16 +46,16 @@ end
 
 
 function _M.execute()
-  -- retrieve server name or raw server IP
+  -- retrieve sni or raw server IP
 
   local sn, err = ssl.server_name()
   if err then
-    log(ERR, "could not retrieve Server Name Indication: ", err)
+    log(ERR, "could not retrieve SNI: ", err)
     return ngx.exit(ngx.ERROR)
   end
 
   if not sn then
-    log(DEBUG, "no Server Name Indication provided by client, serving ",
+    log(DEBUG, "no SNI provided by client, serving ",
                "default proxy SSL certificate")
     -- use fallback certificate
     return

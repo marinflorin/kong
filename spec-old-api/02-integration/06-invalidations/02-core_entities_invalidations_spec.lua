@@ -215,7 +215,7 @@ describe("core entities are invalidated with db: #" .. strategy, function()
   -- ssl_certificates
   -------------------
 
-  describe("#o ssl_certificates / server_names", function()
+  describe("ssl_certificates / snis", function()
 
     local function get_cert(port, sni)
       local pl_utils = require "pl.utils"
@@ -244,14 +244,14 @@ describe("core entities are invalidated with db: #" .. strategy, function()
       assert.matches("CN=localhost", cert_2, nil, true)
     end)
 
-    it("on certificate+Server Name create", function()
+    it("on certificate+SNI create", function()
       local admin_res = assert(admin_client_1:send {
         method = "POST",
         path   = "/certificates",
         body   = {
           cert = ssl_fixtures.cert,
           key  = ssl_fixtures.key,
-          server_names = "ssl-example.com",
+          snis = "ssl-example.com",
         },
         headers = {
           ["Content-Type"] = "application/json",
@@ -273,7 +273,7 @@ describe("core entities are invalidated with db: #" .. strategy, function()
 
     it("on certificate delete+re-creation", function()
       -- TODO: PATCH/PUT update are currently not possible
-      -- with the admin API because server_names have their name as their
+      -- with the admin API because snis have their name as their
       -- primary key and the DAO has limited support for such updates.
 
       local admin_res = assert(admin_client_1:send {
@@ -288,7 +288,7 @@ describe("core entities are invalidated with db: #" .. strategy, function()
         body   = {
           cert = ssl_fixtures.cert,
           key  = ssl_fixtures.key,
-          server_names = "new-ssl-example.com",
+          snis = "new-ssl-example.com",
         },
         headers = {
           ["Content-Type"] = "application/json",
@@ -316,7 +316,7 @@ describe("core entities are invalidated with db: #" .. strategy, function()
 
     it("on certificate update", function()
       -- update our certificate *without* updating the
-      -- attached Server Name
+      -- attached SNI
 
       local admin_res = assert(admin_client_1:send {
         method = "PATCH",
@@ -343,19 +343,19 @@ describe("core entities are invalidated with db: #" .. strategy, function()
       assert.matches("CN=ssl-alt.com", cert_2, nil, true)
     end)
 
-    pending("on Server Name update", function()
-      -- Pending: currently, server_names cannot be updated:
+    pending("on SNI update", function()
+      -- Pending: currently, snis cannot be updated:
       --   - A PATCH updating the name property would not work, since
       --     the URI path expects the current name, and so does the
       --     query fetchign the row to be updated
       --
       --
       --
-      -- update our Server Name but leave certificate untouched
+      -- update our SNI but leave certificate untouched
 
       local admin_res = assert(admin_client_1:send {
         method = "PATCH",
-        path   = "/server_names/new-ssl-example.com",
+        path   = "/snis/new-ssl-example.com",
         body   = {
           name = "updated-sni.com",
         },

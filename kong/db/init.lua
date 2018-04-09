@@ -3,7 +3,6 @@ local Entity       = require "kong.db.schema.entity"
 local Errors       = require "kong.db.errors"
 local Strategies   = require "kong.db.strategies"
 local MetaSchema   = require "kong.db.schema.metaschema"
-local pl_pretty    = require "pl.pretty"
 
 
 local fmt          = string.format
@@ -22,7 +21,7 @@ local CORE_ENTITIES = {
   "routes",
   "services",
   "certificates",
-  "server_names",
+  "snis",
 }
 
 
@@ -41,6 +40,10 @@ function DB.new(kong_config, strategy)
     error("strategy must be a string", 2)
   end
 
+  -- load errors
+
+  local errors = Errors.new(strategy)
+
   local schemas = {}
 
   do
@@ -55,16 +58,12 @@ function DB.new(kong_config, strategy)
       local ok, err_t = MetaSchema:validate(entity_schema)
       if not ok then
         return nil, fmt("schema of entity '%s' is invalid: %s", entity_name,
-                        pl_pretty.write(err_t))
+                        tostring(errors:schema_violation(err_t)))
       end
 
       schemas[entity_name] = Entity.new(entity_schema)
     end
   end
-
-  -- load errors
-
-  local errors = Errors.new(strategy)
 
   -- load strategy
 

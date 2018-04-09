@@ -1,9 +1,9 @@
 local typedefs = require "kong.db.schema.typedefs"
 
 return {
-  name        = "server_names",
+  name        = "snis",
   primary_key = { "id" },
-  dao         = "kong.db.dao.server_names",
+  dao         = "kong.db.dao.snis",
 
   fields = {
     { id           = typedefs.uuid, },

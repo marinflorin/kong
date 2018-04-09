@@ -2,29 +2,28 @@ local singletons = require "kong.singletons"
 local cjson      = require "cjson"
 local utils      = require "kong.tools.utils"
 
--- Get an array of server names from either a string (split+sort),
+-- Get an array of SNI names from either
 -- an array(sort) or ngx.null(return {})
 -- Returns an error if the list has duplicates
 -- Returns nil if input is falsy.
 local function parse_name_list(input, errors)
   local name_list
-  if type(input) == "string" then
-    name_list = utils.split(input, ",")
-  elseif type(input) == "table" then
+  if type(input) == "table" then
     name_list = utils.shallow_copy(input)
+
   elseif input == ngx.null then
     name_list = {}
-  end
 
-  if not name_list then
+  else
     return nil
   end
 
   local found = {}
   for _, name in ipairs(name_list) do
     if found[name] then
-      local msg   = "duplicate server name in request: " .. name
-      local err_t = errors:invalid_input(msg)
+      local err_t = errors:schema_violation({
+        snis = name .. " is duplicated",
+      })
       return nil, tostring(err_t), err_t
     end
     found[name] = true
@@ -38,32 +37,32 @@ end
 local _Certificates = {}
 
 -- Creates a certificate
--- If the provided cert has a field called "server_names" it will be used to generate server
+-- If the provided cert has a field called "snis" it will be used to generate server
 -- names associated to the cert, after being parsed by parse_name_list.
--- Returns a certificate with the server_names sorted alphabetically.
-function _Certificates:insert_with_name_list(cert)
+-- Returns a certificate with the snis sorted alphabetically.
+function _Certificates:insert(cert)
   local db = singletons.db
-  local name_list, err, err_t = parse_name_list(cert.server_names, self.errors)
+  local name_list, err, err_t = parse_name_list(cert.snis, self.errors)
   if err then
     return nil, err, err_t
   end
 
   if name_list then
-    local ok, err, err_t = db.server_names:check_list_is_new(name_list)
+    local ok, err, err_t = db.snis:check_list_is_new(name_list)
     if not ok then
       return nil, err, err_t
     end
   end
 
-  cert.server_names = nil
-  cert, err, err_t = assert(self:insert(cert))
+  cert.snis = nil
+  cert, err, err_t = self.super.insert(self, cert)
   if not cert then
     return nil, err, err_t
   end
-  cert.server_names = name_list or cjson.empty_array
+  cert.snis = name_list or cjson.empty_array
 
   if name_list then
-    local ok, err, err_t = db.server_names:insert_list({id = cert.id}, name_list)
+    local ok, err, err_t = db.snis:insert_list({id = cert.id}, name_list)
     if not ok then
       return nil, err, err_t
     end
@@ -72,24 +71,24 @@ function _Certificates:insert_with_name_list(cert)
   return cert
 end
 
--- Updates a certificate
--- If the cert has a "server_names" attribute it will be used to update the server names
+-- Update override
+-- If the cert has a "snis" attribute it will be used to update the SNIs
 -- associated to the cert.
---   * If the cert had any names associated which are not on `server_names`, they will be
+--   * If the cert had any names associated which are not on `snis`, they will be
 --     removed.
 --   * Any new certificates will be added to the db.
 -- Returns an error if any of the new certificates where already assigned to a cert different
 -- from the one identified by cert_pk
-function _Certificates:update_with_name_list(cert_pk, cert)
+function _Certificates:update(cert_pk, cert)
   local db = singletons.db
-  local name_list, err, err_t = parse_name_list(cert.server_names, self.errors)
+  local name_list, err, err_t = parse_name_list(cert.snis, self.errors)
   if err then
     return nil, err, err_t
   end
 
   if name_list then
     local ok, err, err_t =
-      db.server_names:check_list_is_new_or_in_cert(cert_pk, name_list)
+      db.snis:check_list_is_new_or_in_cert(cert_pk, name_list)
     if not ok then
       return nil, err, err_t
     end
@@ -97,24 +96,24 @@ function _Certificates:update_with_name_list(cert_pk, cert)
 
   -- update certificate if necessary
   if cert.key or cert.cert then
-    cert.server_names = nil
-    cert, err, err_t = self:update(cert_pk, cert)
+    cert.snis = nil
+    cert, err, err_t = self.super.update(self, cert_pk, cert)
     if err then
       return nil, err, err_t
     end
   end
 
   if name_list then
-    cert.server_names = name_list
+    cert.snis = name_list
 
-    local ok, err, err_t = db.server_names:update_list(cert_pk, name_list)
+    local ok, err, err_t = db.snis:update_list(cert_pk, name_list)
     if not ok then
       return nil, err, err_t
     end
 
   else
-    cert.server_names, err, err_t = db.server_names:list_for_certificate(cert_pk)
-    if not cert.server_names then
+    cert.snis, err, err_t = db.snis:list_for_certificate(cert_pk)
+    if not cert.snis then
       return nil, err, err_t
     end
   end
@@ -122,25 +121,10 @@ function _Certificates:update_with_name_list(cert_pk, cert)
   return cert
 end
 
--- Returns a single certificate provided one of its server names. Can return nil
-function _Certificates:select_by_server_name(name)
-  local db = singletons.db
-
-  local sn, err, err_t = db.server_names:select_by_name(name)
-  if err then
-    return nil, err, err_t
-  end
-  if not sn then
-    local err_t = self.errors:not_found({ name = name })
-    return nil, tostring(err_t), err_t
-  end
-
-  return self:select(sn.certificate)
-end
 
 -- Returns the certificate identified by cert_pk but adds the
--- `server_names` pseudo attribute to it. It is an array of strings
--- representing the server names associated to the certificate.
+-- `snis` pseudo attribute to it. It is an array of strings
+-- representing the SNIs associated to the certificate.
 function _Certificates:select_with_name_list(cert_pk)
   local db = singletons.db
 
@@ -154,7 +138,7 @@ function _Certificates:select_with_name_list(cert_pk)
     return nil, tostring(err_t), err_t
   end
 
-  cert.server_names, err, err_t = db.server_names:list_for_certificate(cert_pk)
+  cert.snis, err, err_t = db.snis:list_for_certificate(cert_pk)
   if err_t then
     return nil, err, err_t
   end
@@ -162,42 +146,42 @@ function _Certificates:select_with_name_list(cert_pk)
   return cert
 end
 
--- Returns a page of certificates, each with the `server_names` pseudo-attribute
+-- Returns a page of certificates, each with the `snis` pseudo-attribute
 -- associated to them. This method does N+1 queries, but for now we are limited
--- by the DAO's select options (we can't query for "all the server names for this
+-- by the DAO's select options (we can't query for "all the SNIs for this
 -- list of certificate ids" in one go).
-function _Certificates:page_with_name_list(size, offset)
+function _Certificates:page(size, offset)
   local db = singletons.db
-  local certs, err, err_t, offset = self:page(size, offset)
+  local certs, err, err_t, offset = self.super.page(self, size, offset)
   if not certs then
     return nil, err, err_t
   end
 
   for i=1, #certs do
     local cert = certs[i]
-    local server_names, err, err_t =
-      db.server_names:list_for_certificate({ id = cert.id })
-    if not server_names then
+    local snis, err, err_t =
+      db.snis:list_for_certificate({ id = cert.id })
+    if not snis then
       return nil, err, err_t
     end
-    cert.server_names = server_names
+    cert.snis = snis
   end
 
   return certs, nil, nil, offset
 end
 
--- Overrides the default delete function by cascading-deleting all the server names
+-- Overrides the default delete function by cascading-deleting all the SNIs
 -- associated to the certificate
 function _Certificates:delete(cert_pk)
   local db = singletons.db
 
   local name_list, err, err_t =
-    db.server_names:list_for_certificate(cert_pk)
+    db.snis:list_for_certificate(cert_pk)
   if not name_list then
     return nil, err, err_t
   end
 
-  local ok, err, err_t = db.server_names:delete_list(name_list)
+  local ok, err, err_t = db.snis:delete_list(name_list)
   if not ok then
     return nil, err, err_t
   end

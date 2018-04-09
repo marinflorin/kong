@@ -373,7 +373,7 @@ for _, strategy in helpers.each_strategy() do
     -- ssl_certificates
     -------------------
 
-    describe("ssl_certificates / Server names", function()
+    describe("ssl_certificates / snis", function()
 
       local function get_cert(port, sn)
         local pl_utils = require "pl.utils"
@@ -402,12 +402,12 @@ for _, strategy in helpers.each_strategy() do
         assert.matches("CN=localhost", cert_2, nil, true)
       end)
 
-      it("on certificate+Server name create", function()
+      it("on certificate+sni create", function()
         local admin_res = admin_client_1:post("/certificates", {
           body   = {
             cert = ssl_fixtures.cert,
             key  = ssl_fixtures.key,
-            server_names = "ssl-example.com",
+            snis = { "ssl-example.com" },
           },
           headers = { ["Content-Type"] = "application/json" }
         })
@@ -427,7 +427,7 @@ for _, strategy in helpers.each_strategy() do
 
       it("on certificate delete+re-creation", function()
         -- TODO: PATCH update are currently not possible
-        -- with the admin API because server names have their name as their
+        -- with the admin API because snis have their name as their
         -- primary key and the DAO has limited support for such updates.
 
         local admin_res = admin_client_1:delete("/certificates/ssl-example.com")
@@ -435,9 +435,9 @@ for _, strategy in helpers.each_strategy() do
 
         local admin_res = admin_client_1:post("/certificates", {
           body   = {
-            cert         = ssl_fixtures.cert,
-            key          = ssl_fixtures.key,
-            server_names = "new-ssl-example.com",
+            cert = ssl_fixtures.cert,
+            key  = ssl_fixtures.key,
+            snis = { "new-ssl-example.com" },
           },
           headers = {
             ["Content-Type"] = "application/json",
@@ -465,7 +465,7 @@ for _, strategy in helpers.each_strategy() do
 
       it("on certificate update", function()
         -- update our certificate *without* updating the
-        -- attached server name
+        -- attached sni
 
         local admin_res = assert(admin_client_1:send {
           method = "PATCH",
@@ -492,19 +492,19 @@ for _, strategy in helpers.each_strategy() do
         assert.matches("CN=ssl-alt.com", cert_2, nil, true)
       end)
 
-      pending("on server name update", function()
-        -- Pending: currently, server names cannot be updated:
+      pending("on sni update", function()
+        -- Pending: currently, snis cannot be updated:
         --   - A PATCH updating the name property would not work, since
         --     the URI path expects the current name, and so does the
         --     query fetchign the row to be updated
         --
         --
         --
-        -- update our Server name but leave certificate untouched
+        -- update our sni but leave certificate untouched
 
         local admin_res = assert(admin_client_1:send {
           method = "PATCH",
-          path   = "/server_names/new-ssl-example.com",
+          path   = "/snis/new-ssl-example.com",
           body   = {
             name = "updated-sn.com",
           },

@@ -65,10 +65,10 @@ local _M = {}
 function _M.new(dao, db)
   local res = {}
 
-  local server_name_seq = new_sequence("server-name-%d")
-  res.server_names = new_blueprint(db.server_names, function(overrides)
+  local sni_seq = new_sequence("server-name-%d")
+  res.snis = new_blueprint(db.snis, function(overrides)
     return {
-      name        = server_name_seq:next(),
+      name        = sni_seq:next(),
       certificate = overrides.certificate or res.certificates:insert(),
     }
   end)

@@ -32,8 +32,6 @@ local ERRORS            = {
   NOT_FOUND             =  6, -- WHERE clause leads nowhere (HTTP 404)
   INVALID_OFFSET        =  7, -- page(size, offset) is invalid
   DATABASE_ERROR        =  8, -- connection refused or DB error (HTTP 500)
-  CONFLICTING_INPUT     =  9, -- user-provided data generated a conflict (HTTP 409)
-  INVALID_INPUT         = 10, -- user-provided data is not valid (HTTP 400)
 }
 
 
@@ -49,8 +47,6 @@ local ERRORS_NAMES               = {
   [ERRORS.NOT_FOUND]             = "not found",
   [ERRORS.INVALID_OFFSET]        = "invalid offset",
   [ERRORS.DATABASE_ERROR]        = "database error",
-  [ERRORS.CONFLICTING_INPUT]     = "conflicting input",
-  [ERRORS.INVALID_INPUT]         = "invalid input",
 }
 
 
@@ -296,24 +292,6 @@ function _M:unique_violation(unique_key)
                       pl_pretty(unique_key, ""))
 
   return new_err_t(self, ERRORS.UNIQUE_VIOLATION, message, unique_key)
-end
-
-
-function _M:conflicting_input(message)
-  if type(message) ~= "string" then
-    error("message must be a string", 2)
-  end
-
-  return new_err_t(self, ERRORS.CONFLICTING_INPUT, message)
-end
-
-
-function _M:invalid_input(message)
-  if type(message) ~= "string" then
-    error("message must be a string", 2)
-  end
-
-  return new_err_t(self, ERRORS.INVALID_INPUT, message)
 end
 
 

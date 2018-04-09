@@ -695,20 +695,20 @@ return {
     down = nil
   },
   {
-    name = "2018-03-27-123400_prepare_certs_and_server_names",
+    name = "2018-03-27-123400_prepare_certs_and_snis",
     up = [[
       DO $$
       BEGIN
         ALTER TABLE ssl_certificates    RENAME TO certificates;
-        ALTER TABLE ssl_servers_names   RENAME TO server_names;
+        ALTER TABLE ssl_servers_names   RENAME TO snis;
       EXCEPTION WHEN duplicate_table THEN
         -- Do nothing, accept existing state
       END$$;
 
       DO $$
       BEGIN
-        ALTER TABLE server_names RENAME COLUMN ssl_certificate_id TO certificate_id;
-        ALTER TABLE server_names ADD    COLUMN id uuid;
+        ALTER TABLE snis RENAME COLUMN ssl_certificate_id TO certificate_id;
+        ALTER TABLE snis ADD    COLUMN id uuid;
       EXCEPTION WHEN undefined_column THEN
         -- Do nothing, accept existing state
       END$$;
@@ -716,48 +716,51 @@ return {
     down = nil
   },
   {
-    name = "2018-03-27-125400_fill_in_server_names_ids",
+    name = "2018-03-27-125400_fill_in_snis_ids",
     up = function(_, _, dao)
+      local fmt = string.format
+
       local rows, err = dao.db:query([[
-        SELECT * FROM server_names;
+        SELECT * FROM snis;
       ]])
       if err then
         return err
       end
+      local sql_buffer = { "BEGIN;" }
+      local len = #rows
+      for i = 1, len do
+        sql_buffer[i + 1] = fmt("UPDATE snis SET id = '%s' WHERE name = '%s';",
+                                utils.uuid(),
+                                rows[i].name)
+      end
+      sql_buffer[len + 2] = "COMMIT;"
 
-      local fmt = string.format
-
-      for _, row in ipairs(rows) do
-        local sql = fmt("UPDATE server_names SET id = '%s' WHERE name = '%s';",
-                        utils.uuid(),
-                        row.name)
-        local _, err = dao.db:query(sql)
-        if err then
-          return err
-        end
+      local _, err = dao.db:query(table.concat(sql_buffer))
+      if err then
+        return err
       end
     end,
     down = nil
   },
   {
-    name = "2018-03-27-130400_make_ids_primary_keys_in_server_names",
+    name = "2018-03-27-130400_make_ids_primary_keys_in_snis",
     up = [[
-      ALTER TABLE server_names
+      ALTER TABLE snis
         DROP CONSTRAINT IF EXISTS ssl_servers_names_pkey;
 
-      ALTER TABLE server_names
-        DROP CONSTRAINT IF EXISTS ssl_server_names_ssl_certificate_id_fkey;
+      ALTER TABLE snis
+        DROP CONSTRAINT IF EXISTS ssl_servers_names_ssl_certificate_id_fkey;
 
       DO $$
       BEGIN
-        ALTER TABLE server_names
-          ADD CONSTRAINT server_names_name_unique UNIQUE(name);
+        ALTER TABLE snis
+          ADD CONSTRAINT snis_name_unique UNIQUE(name);
 
-        ALTER TABLE server_names
+        ALTER TABLE snis
           ADD PRIMARY KEY (id);
 
-        ALTER TABLE server_names
-          ADD CONSTRAINT server_names_certificate_id_fkey
+        ALTER TABLE snis
+          ADD CONSTRAINT snis_certificate_id_fkey
           FOREIGN KEY (certificate_id)
           REFERENCES certificates;
       EXCEPTION WHEN duplicate_table THEN

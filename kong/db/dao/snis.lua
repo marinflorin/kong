@@ -1,8 +1,8 @@
 local singletons = require "kong.singletons"
+local cjson      = require "cjson"
 
--- A "name_list" is an array of server names like { "example.com", "foo.com" }
--- All methods containing "list" on their name act on name lists, not on lists
--- of complete ServerName entities
+-- A "name_list" is an array of names like { "example.com", "foo.com" }
+-- All methods containing "list" on their name act on name lists, not on lists of complete SNI entities
 
 -- { "a", "b", "c" } - { "a", "c" } = { "b" }
 local function list_diff(list1, list2)
@@ -24,18 +24,18 @@ local function list_diff(list1, list2)
 end
 
 
-local _ServerNames = {}
+local _SNIs = {}
 
 
 -- Truthy if all the names on the list don't exist on the db
-function _ServerNames:check_list_is_new(name_list)
+function _SNIs:check_list_is_new(name_list)
   -- when creating a new cert (no cert_id provided):
-  -- dont add the certificate or any names if we have an server name conflict
+  -- dont add the certificate or any names if we have a name conflict
   -- its fairly inefficient that we have to loop twice over the datastore
   -- but no support for OR queries means we gotsta!
   for i=1, #name_list do
     local name = name_list[i]
-    local row, err, err_t = singletons.db.server_names:select_by_name(name)
+    local row, err, err_t = singletons.db.snis:select_by_name(name)
     if err then
       return nil, err, err_t
     end
@@ -44,40 +44,43 @@ function _ServerNames:check_list_is_new(name_list)
       -- Note: it could be that the name is not associated with any
       -- certificate, but we don't handle this case. (for PostgreSQL
       -- only, as C* requires a cert_id for its partition key).
-      local msg   = "Server name already exists: " .. name
-      local err_t = self.errors:conflicting_input(msg)
+      local err_t = self.errors:schema_violation({
+        snis = name .. " already exists",
+      })
       return nil, tostring(err_t), err_t
     end
   end
 
-  return 1
+  return true
 end
 
 
 -- Truthy if all the names on the list don't exist on the db or exist but are
 -- associated to the given certificate
-function _ServerNames:check_list_is_new_or_in_cert(cert_pk, name_list)
+function _SNIs:check_list_is_new_or_in_cert(cert_pk, name_list)
   for i=1, #name_list do
     local row, err, err_t = self:select_by_name(name_list[i])
     if err then
       return nil, err, err_t
     end
     if row and row.certificate.id ~= cert_pk.id then
-      local msg = "Server Name '" .. row.name ..
-                  "' already associated with existing " ..
-                  "certificate (" .. row.certificate.id .. ")"
-      local err_t = self.errors:conflicting_input(msg)
+      local msg = row.name ..
+                  " already associated with existing " ..
+                  "certificate '" .. row.certificate.id .. "'"
+      local err_t = self.errors:schema_violation({
+        snis = msg,
+      })
       return nil, tostring(err_t), err_t
     end
   end
 
-  return 1
+  return true
 end
 
 
--- Creates one instance of ServerName for each name in name_list
+-- Creates one instance of SNI for each name in name_list
 -- All created instances will be associated to the given certificate
-function _ServerNames:insert_list(cert_pk, name_list)
+function _SNIs:insert_list(cert_pk, name_list)
   for _, name in ipairs(name_list) do
     local _, err, err_t = self:insert({
       name         = name,
@@ -88,12 +91,12 @@ function _ServerNames:insert_list(cert_pk, name_list)
     end
   end
 
-  return 1
+  return true
 end
 
 
--- Deletes all server names on the given name list
-function _ServerNames:delete_list(name_list)
+-- Deletes all SNIs on the given name list
+function _SNIs:delete_list(name_list)
   local err_list = {}
   local errors_len = 0
   local first_err_t = nil
@@ -110,13 +113,13 @@ function _ServerNames:delete_list(name_list)
     return nil, table.concat(err_list, ","), first_err_t
   end
 
-  return 1
+  return true
 end
 
 
 -- Returns the name list for a given certificate
-function _ServerNames:list_for_certificate(cert_pk)
-  local name_list = {}
+function _SNIs:list_for_certificate(cert_pk)
+  local name_list = setmetatable({}, cjson.empty_array_mt)
   local rows, err, err_t = self:for_certificate(cert_pk)
   if err then
     return nil, err, err_t
@@ -131,9 +134,9 @@ end
 
 
 -- Replaces the names of a given certificate
--- It does not try to insert server names which are already inserted
--- It does not try to delete server names which don't exist
-function _ServerNames:update_list(cert_pk, new_list)
+-- It does not try to insert SNIs which are already inserted
+-- It does not try to delete SNIs which don't exist
+function _SNIs:update_list(cert_pk, new_list)
   -- Get the names currently associated to the certificate
   local current_list, err, err_t = self:list_for_certificate(cert_pk)
   if not current_list then
@@ -152,8 +155,8 @@ function _ServerNames:update_list(cert_pk, new_list)
   -- returning 4xx here risks invalid states and is confusing to the user
   self:delete_list(delete_list)
 
-  return 1
+  return true
 end
 
 
-return _ServerNames
+return _SNIs

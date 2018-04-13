@@ -50,7 +50,9 @@ local OAUTH2_CREDENTIALS_SCHEMA = {
   cache_key = { "client_id" },
   fields = {
     id = { type = "id", dao_insert_value = true },
-    consumer_id = { type = "id", required = true, foreign = "consumers:id" },
+    consumer_id = { type = "id", required = true,
+                    -- foreign = "consumers:id"
+                  },
     name = { type = "string", required = true },
     client_id = { type = "string", required = false, unique = true, default = utils.random_string },
     client_secret = { type = "string", required = false, default = utils.random_string },

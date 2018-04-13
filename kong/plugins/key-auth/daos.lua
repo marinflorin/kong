@@ -7,7 +7,9 @@ local SCHEMA = {
   fields = {
     id = {type = "id", dao_insert_value = true},
     created_at = {type = "timestamp", immutable = true, dao_insert_value = true},
-    consumer_id = {type = "id", required = true, foreign = "consumers:id"},
+    consumer_id = { type = "id", required = true,
+                    -- foreign = "consumers:id"
+                  },
     key = {type = "string", required = false, unique = true, default = utils.random_string}
   },
 }

@@ -4,7 +4,6 @@ local ModelFactory = require "kong.dao.model_factory"
 
 local CORE_MODELS = {
   "apis",
-  "consumers",
   "plugins",
   "ssl_certificates",
   "ssl_servers_names",
@@ -37,7 +36,9 @@ local function build_constraints(schemas)
       if type(field.foreign) == "string" then
         local f_entity, f_field = unpack(utils.split(field.foreign, ":"))
         if f_entity ~= nil and f_field ~= nil then
-          local f_schema = schemas[f_entity]
+          local f_schema = assert(schemas[f_entity], "could not find schema for " ..
+                                  f_entity .. " when parsing constraints for " ..
+                                  m_name)
           constraints.foreign[col] = {
             table = f_schema.table,
             schema = f_schema,

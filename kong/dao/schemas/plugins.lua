@@ -61,7 +61,7 @@ return {
     },
     consumer_id = {
       type = "id",
-      foreign = "consumers:id"
+      -- foreign = "consumers:id"
     },
     name = {
       type = "string",

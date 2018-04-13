@@ -17,6 +17,16 @@ local DEFAULT_PATHS = {
   "/etc/kong.conf"
 }
 
+local headers = constants.HEADERS
+local header_tokens = {
+  [headers.PROXY_LATENCY] = false,
+  [headers.UPSTREAM_LATENCY] = false,
+  [headers.SERVER] = false,
+  [headers.VIA] = false,
+  server_tokens = false,
+  latency_tokens = false,
+}
+
 local PREFIX_PATHS = {
   nginx_pid = {"pids", "nginx.pid"},
   nginx_err_logs = {"logs", "error.log"},
@@ -61,8 +71,7 @@ local CONF_INFERENCES = {
   nginx_user = {typ = "string"},
   nginx_worker_processes = {typ = "string"},
   upstream_keepalive = {typ = "number"},
-  server_tokens = {typ = "boolean"},
-  latency_tokens = {typ = "boolean"},
+  headers = {typ = "array"},
   trusted_ips = {typ = "array"},
   real_ip_header = {typ = "string"},
   real_ip_recursive = {typ = "ngx_boolean"},
@@ -275,6 +284,18 @@ local function check_and_infer(conf)
     end)
     if not ok then
       errors[#errors + 1] = err
+    end
+  end
+
+  if conf.headers then
+    for _, token in ipairs(conf.headers) do
+      if token == "off" then
+          break
+      end
+
+      if header_tokens[token] == nil then
+        errors[#errors+1] = "headers: invalid entry '" .. tostring(token) .. "'"
+      end
     end
   end
 
@@ -586,6 +607,27 @@ local function load(path, custom_conf)
       end
     end
   end
+
+  local header_tokens_clone = tablex.deepcopy(header_tokens)
+  -- load headers configuration
+  for _, token in ipairs(conf.headers) do
+    if token == "off" then
+        break
+    else
+      header_tokens_clone[token] = true
+    end
+  end
+
+  if header_tokens_clone.server_tokens then
+    header_tokens_clone[headers.SERVER] = true
+    header_tokens_clone[headers.VIA] = true
+  end
+
+  if header_tokens_clone.latency_tokens then
+    header_tokens_clone[headers.PROXY_LATENCY] = true
+    header_tokens_clone[headers.UPSTREAM_LATENCY] = true
+  end
+  conf.headers = header_tokens_clone
 
   -- load absolute paths
   conf.prefix = pl_path.abspath(conf.prefix)

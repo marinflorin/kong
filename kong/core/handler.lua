@@ -696,17 +696,20 @@ return {
       local header = ngx.header
 
       if ctx.KONG_PROXIED then
-        if singletons.configuration.latency_tokens then
+        if singletons.configuration.headers[constants.HEADERS.UPSTREAM_LATENCY] then
           header[constants.HEADERS.UPSTREAM_LATENCY] = ctx.KONG_WAITING_TIME
-          header[constants.HEADERS.PROXY_LATENCY]    = ctx.KONG_PROXY_LATENCY
         end
 
-        if singletons.configuration.server_tokens then
+        if singletons.configuration.headers[constants.HEADERS.PROXY_LATENCY] then
+          header[constants.HEADERS.PROXY_LATENCY] = ctx.KONG_PROXY_LATENCY
+        end
+
+        if singletons.configuration.headers[constants.HEADERS.VIA] then
           header["Via"] = server_header
         end
 
       else
-        if singletons.configuration.server_tokens then
+        if singletons.configuration.headers[constants.HEADERS.SERVER] then
           header["Server"] = server_header
 
         else

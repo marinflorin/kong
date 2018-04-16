@@ -1,6 +1,7 @@
 local resty_mlcache = require "resty.mlcache"
 
 
+local fmt     = string.format
 local type    = type
 local max     = math.max
 local ngx_log = ngx.log
@@ -111,6 +112,17 @@ function _M.new(opts)
   _init = true
 
   return setmetatable(self, mt)
+end
+
+
+function _M:key(arg1, arg2, arg3, arg4, arg5, arg6)
+  return fmt("%s:%s:%s:%s:%s:%s",
+             arg1 == nil and "" or arg1,
+             arg2 == nil and "" or arg2,
+             arg3 == nil and "" or arg3,
+             arg4 == nil and "" or arg4,
+             arg5 == nil and "" or arg5,
+             arg6 == nil and "" or arg6)
 end
 
 

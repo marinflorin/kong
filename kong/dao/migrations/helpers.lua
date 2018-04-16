@@ -104,7 +104,7 @@ _M.cassandra = {}
 local CASSANDRA_EXECUTE_OPTS = { consistency = cassandra.consistencies.all }
 
 --[[
-Copy all records from the table defined by source_table_def into
+Insert records from the table defined by source_table_def into
 destination_table_def. Both table_defs have the following structure
   { name    = "ssl_certificates",
     columns = {
@@ -133,6 +133,9 @@ Example:
 
 The function takes the "source row" as parameter, so it could be used to do things
 like merging two fields together into one, or putting a string in uppercase.
+
+Note: In Cassandra, INSERT does "insert if not exists or update using pks if exists"
+      So this function is re-entrant
 --]]
 function _M.cassandra.copy_records(dao,
                                    source_table_def,
@@ -244,20 +247,6 @@ do
   end
 
 
-  local function is_empty(coordinator, table_def)
-    local cql = fmt("SELECT count(*) from %s", table_def.name)
-    local rows, err = coordinator:execute(cql, {}, CASSANDRA_EXECUTE_OPTS)
-    if not rows then
-      return nil, err
-    end
-
-    if not rows[1] or not rows[1].count then
-      return nil, "error when counting rows: count not returned"
-    end
-
-    return rows[1].count == 0
-  end
-
   --[[
     Add a new partition key called "partition" to the table specified by table_def.
 
@@ -292,16 +281,9 @@ do
       return nil, err
     end
 
-    -- if the aux table is not empty, then we're re-entering the migration, so skip copying
-    local empty, err = is_empty(coordinator, aux_table_def)
+    local _, err = copy_records(dao, table_def, aux_table_def, columns_to_copy)
     if err then
       return nil, err
-    end
-    if empty then
-      local _, err = copy_records(dao, table_def, aux_table_def, columns_to_copy)
-      if err then
-        return nil, err
-      end
     end
 
     local _, err = drop_table_if_exists(coordinator, table_def.name)
@@ -317,16 +299,9 @@ do
       return nil, err
     end
 
-    -- skip copying if the recently-created table has records (this means we're re-entering the migration)
-    local empty, err = is_empty(coordinator, table_def)
+    local _, err = copy_records(dao, aux_table_def, table_def, columns_to_copy)
     if err then
       return nil, err
-    end
-    if empty then
-      local _, err = copy_records(dao, aux_table_def, table_def, columns_to_copy)
-      if err then
-        return nil, err
-      end
     end
 
     local _, err = drop_table_if_exists(coordinator, aux_table_def.name)

@@ -641,7 +641,7 @@ return {
           custom_id = "text",
           username = "text",
         },
-        partition_keys = { "id" }
+        partition_keys = { "id" },
       }
       local _, err = helpers.cassandra.add_partition(dao, consumers)
       if err then
@@ -649,5 +649,12 @@ return {
       end
     end,
     down = nil
+  },
+  {
+    name = "2018-03-16-160000_index_consumers",
+    up = [[
+      CREATE INDEX IF NOT EXISTS ON consumers(custom_id);
+      CREATE INDEX IF NOT EXISTS ON consumers(username);
+    ]]
   }
 }

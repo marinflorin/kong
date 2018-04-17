@@ -78,6 +78,7 @@ build = {
     ["kong.api.endpoints"] = "kong/api/endpoints.lua",
     ["kong.api.routes.kong"] = "kong/api/routes/kong.lua",
     ["kong.api.routes.apis"] = "kong/api/routes/apis.lua",
+    ["kong.api.routes.consumers"] = "kong/api/routes/consumers.lua",
     ["kong.api.routes.plugins"] = "kong/api/routes/plugins.lua",
     ["kong.api.routes.routes"] = "kong/api/routes/routes.lua",
     ["kong.api.routes.services"] = "kong/api/routes/services.lua",

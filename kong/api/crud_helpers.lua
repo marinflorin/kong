@@ -80,9 +80,16 @@ function _M.find_plugin_by_filter(self, dao_factory, filter, helpers)
   end
 end
 
+
 function _M.find_consumer_by_username_or_id(self, dao_factory, helpers)
-  local rows, err = _M.find_by_id_or_field(dao_factory.consumers, {},
-                                           self.params.username_or_id, "username")
+  local username_or_id = self.params.username_or_id
+  local db = dao_factory.new_db
+  local consumer, err
+  if utils.is_valid_uuid(username_or_id) then
+    consumer, err = db.consumers:select({ id = username_or_id })
+  else
+    consumer, err = db.consumers:select_by_username(username_or_id)
+  end
 
   if err then
     return helpers.yield_error(err)
@@ -90,11 +97,12 @@ function _M.find_consumer_by_username_or_id(self, dao_factory, helpers)
   self.params.username_or_id = nil
 
   -- We know username and id are unique, so if we have a row, it must be the only one
-  self.consumer = rows[1]
+  self.consumer = consumer
   if not self.consumer then
     return helpers.responses.send_HTTP_NOT_FOUND()
   end
 end
+
 
 function _M.find_upstream_by_name_or_id(self, dao_factory, helpers)
   local rows, err = _M.find_by_id_or_field(dao_factory.upstreams, {},

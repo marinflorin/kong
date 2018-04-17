@@ -83,7 +83,7 @@ dao_helpers.for_each_dao(function(kong_config)
         end)
 
         it("Service/Consumer", function()
-          local consumer, err = dao.consumers:insert {
+          local consumer, err = db.consumers:insert {
             username = "bob"
           }
           assert.falsy(err)
@@ -164,7 +164,7 @@ dao_helpers.for_each_dao(function(kong_config)
           }
           assert.is_nil(err_t)
 
-          local consumer, err = dao.consumers:insert {
+          local consumer, err = db.consumers:insert {
             username = "bob"
           }
           assert.falsy(err)
@@ -209,7 +209,7 @@ dao_helpers.for_each_dao(function(kong_config)
 
           assert.is_nil(err_t)
 
-          local consumer, err = dao.consumers:insert {
+          local consumer, err = db.consumers:insert {
             username = "bob"
           }
           assert.falsy(err)
@@ -380,7 +380,7 @@ dao_helpers.for_each_dao(function(kong_config)
       end)
 
       it("deleting Consumer deletes associated Plugin", function()
-        local consumer_fixture, err = dao.consumers:insert {
+        local consumer_fixture, err = db.consumers:insert {
           username = "bob"
         }
 
@@ -393,11 +393,11 @@ dao_helpers.for_each_dao(function(kong_config)
         }
         assert.falsy(err)
 
-        local res, err = dao.consumers:delete(consumer_fixture)
+        local res, err = db.consumers:delete({ id = consumer_fixture.id })
         assert.falsy(err)
-        assert.is_table(res)
+        assert.truthy(res)
 
-        local consumer, err = dao.consumers:find(consumer_fixture)
+        local consumer, err = db.consumers:select({ id = consumer_fixture.id })
         assert.falsy(err)
         assert.falsy(consumer)
 

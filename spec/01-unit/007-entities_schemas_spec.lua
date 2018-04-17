@@ -1,5 +1,4 @@
 local api_schema = require "kong.dao.schemas.apis"
-local consumer_schema = require "kong.dao.schemas.consumers"
 local plugins_schema = require "kong.dao.schemas.plugins"
 local targets_schema = require "kong.dao.schemas.targets"
 local upstreams_schema = require "kong.dao.schemas.upstreams"
@@ -9,7 +8,6 @@ local validate_entity = validations.validate_entity
 describe("Entities Schemas", function()
 
   for k, schema in pairs({api = api_schema,
-                          consumer = consumer_schema,
                           plugins = plugins_schema,
                           targets = targets_schema,
                           upstreams = upstreams_schema}) do
@@ -588,33 +586,6 @@ describe("Entities Schemas", function()
           end
         end)
       end
-    end)
-  end)
-
-  --
-  -- Consumer
-  --
-
-  describe("Consumers", function()
-    it("should require a `custom_id` or `username`", function()
-      local valid, errors = validate_entity({}, consumer_schema)
-      assert.is_false(valid)
-      assert.equal("At least a 'custom_id' or a 'username' must be specified", errors.username)
-      assert.equal("At least a 'custom_id' or a 'username' must be specified", errors.custom_id)
-
-      valid, errors = validate_entity({ username = "" }, consumer_schema)
-      assert.is_false(valid)
-      assert.equal("At least a 'custom_id' or a 'username' must be specified", errors.username)
-      assert.equal("At least a 'custom_id' or a 'username' must be specified", errors.custom_id)
-
-      valid, errors = validate_entity({ username = true }, consumer_schema)
-      assert.is_false(valid)
-      assert.equal("username is not a string", errors.username)
-      assert.equal("At least a 'custom_id' or a 'username' must be specified", errors.custom_id)
-    end)
-
-    it("has a cache_key", function()
-      assert.is_table(consumer_schema.cache_key)
     end)
   end)
 

@@ -33,6 +33,40 @@ local function handle_error(err_t)
 end
 
 
+local function extract_unique_field_names(schema)
+  local unique_field_names = {}
+  local len = 0
+
+  for fname, field in schema:each_field() do
+    if field.unique then
+      len = len + 1
+      unique_field_names[len] = fname
+    end
+  end
+
+  return unique_field_names
+end
+
+
+local function select_by_param(dao, unique_field_names, param)
+  -- TODO: composite key support
+  if utils.is_valid_uuid(param) then
+    return dao:select({ id = param })
+  end
+
+  for _, fname in ipairs(unique_field_names) do
+    local row, err, err_t = dao["select_by_" .. fname](dao, param)
+    if err_t then
+      return nil, err, err_t
+    end
+
+    if row then
+      return row
+    end
+  end
+end
+
+
 -- Generates admin api get collection endpoint functions
 --
 -- Examples:
@@ -45,7 +79,7 @@ end
 -- /services
 local function get_collection_endpoint(schema_name, entity_name,
                                        parent_schema_name,
-                                       parent_entity_has_unique_name)
+                                       parent_entity_unique_field_names)
   if not parent_schema_name then
     return function(self, db, helpers)
       local data, _, err_t, offset = db[schema_name]:page(self.args.size,
@@ -66,17 +100,11 @@ local function get_collection_endpoint(schema_name, entity_name,
   end
 
   return function(self, db, helpers)
-    local id = self.params[parent_schema_name]
-
     -- TODO: composite key support
-    local parent_entity, _, err_t
-    if parent_entity_has_unique_name and not utils.is_valid_uuid(id) then
-      parent_entity, _, err_t = db[parent_schema_name]:select_by_name(id)
-
-    else
-      parent_entity, _, err_t = db[parent_schema_name]:select({ id = id })
-    end
-
+    local parent_id = self.params[parent_schema_name]
+    local parent_entity, _, err_t = select_by_param(db[parent_schema_name],
+                                                    parent_entity_unique_field_names,
+                                                    parent_id)
     if err_t then
       return handle_error(err_t)
     end
@@ -85,10 +113,9 @@ local function get_collection_endpoint(schema_name, entity_name,
       return helpers.responses.send_HTTP_NOT_FOUND()
     end
 
-    local entity = db[schema_name]
-
     -- TODO: composite key support
-    local rows, _, err_t, offset = entity["for_" .. entity_name](entity, {
+    local dao = db[schema_name]
+    local rows, _, err_t, offset = dao["for_" .. entity_name](dao, {
       id = parent_entity.id
     }, self.args.size, self.args.offset)
     if err_t then
@@ -96,7 +123,7 @@ local function get_collection_endpoint(schema_name, entity_name,
     end
 
     local next_page = offset and fmt("/%s/%s/%s?offset=%s", parent_schema_name,
-                                     escape_uri(id), schema_name,
+                                     escape_uri(parent_id), schema_name,
                                      escape_uri(offset)) or null
 
     return helpers.responses.send_HTTP_OK {
@@ -120,20 +147,15 @@ end
 -- /services
 local function post_collection_endpoint(schema_name, entity_name,
                                         parent_schema_name,
-                                        parent_entity_has_unique_name)
+                                        parent_entity_unique_field_names)
   return function(self, db, helpers)
     if parent_schema_name then
       local id = self.params[parent_schema_name]
 
       -- TODO: composite key support
-      local parent_entity, _, err_t
-      if parent_entity_has_unique_name and not utils.is_valid_uuid(id) then
-        parent_entity, _, err_t = db[parent_schema_name]:select_by_name(id)
-
-      else
-        parent_entity, _, err_t = db[parent_schema_name]:select({ id = id })
-      end
-
+      local parent_entity, _, err_t = select_by_param(db[parent_schema_name],
+                                                      parent_entity_unique_field_names,
+                                                      id)
       if err_t then
         return handle_error(err_t)
       end
@@ -166,35 +188,27 @@ end
 -- and
 --
 -- /services/:services
-local function get_entity_endpoint(schema_name, entity_has_unique_name,
-                                   entity_name, parent_schema_name,
-                                   parent_entity_has_unique_name)
+local function get_entity_endpoint(schema_name,
+                                   entity_unique_field_names,
+                                   entity_name,
+                                   parent_schema_name,
+                                   parent_entity_unique_field_names)
   return function(self, db, helpers)
     local entity, _, err_t
 
     if not parent_schema_name then
+      -- TODO: composite key support
       local id = self.params[schema_name]
-
-      -- TODO: composite key support
-      if entity_has_unique_name and not utils.is_valid_uuid(id) then
-        entity, _, err_t = db[schema_name]:select_by_name(id)
-
-      else
-        entity, _, err_t = db[schema_name]:select({ id = id })
-      end
-
+      entity, _, err_t = select_by_param(db[schema_name],
+                                         entity_unique_field_names,
+                                         id)
     else
-      local id = self.params[parent_schema_name]
-
       -- TODO: composite key support
+      local parent_id = self.params[parent_schema_name]
       local parent_entity
-      if parent_entity_has_unique_name and not utils.is_valid_uuid(id) then
-        parent_entity, _, err_t = db[parent_schema_name]:select_by_name(id)
-
-      else
-        parent_entity, _, err_t = db[parent_schema_name]:select({ id = id })
-      end
-
+      parent_entity, _, err_t = select_by_param(db[parent_schema_name],
+                                                parent_entity_unique_field_names,
+                                                parent_id)
       if err_t then
         return handle_error(err_t)
       end
@@ -229,34 +243,47 @@ end
 -- and
 --
 -- /services/:services
-local function patch_entity_endpoint(schema_name, entity_has_unique_name,
-                                     entity_name, parent_schema_name,
-                                     parent_entity_has_unique_name)
+local function patch_entity_endpoint(schema_name,
+                                     entity_unique_field_names,
+                                     entity_name,
+                                     parent_schema_name,
+                                     parent_entity_unique_field_names)
   return function(self, db, helpers)
     local entity, _, err_t
 
     if not parent_schema_name then
-      local id = self.params[schema_name]
-
+      local dao = db[schema_name]
       -- TODO: composite key support
-      if entity_has_unique_name and not utils.is_valid_uuid(id) then
-        entity, _, err_t = db[schema_name]:update_by_name(id, self.args.post)
+      local id = self.params[schema_name]
+      if utils.is_valid_uuid(id) then
+        entity, _, err_t = dao:update({ id = id }, self.args.post)
+
+      elseif #entity_unique_field_names == 1 then
+        local fname = entity_unique_field_names[1]
+        entity, _, err_t = dao["update_by_" .. fname](dao, id, self.args.post)
 
       else
-        entity, _, err_t = db[schema_name]:update({ id = id }, self.args.post)
+        entity, _, err_t = select_by_param(dao,
+                                           entity_unique_field_names,
+                                           id)
+        if err_t then
+          return handle_error(err_t)
+        end
+
+        if not entity then
+          return helpers.responses.send_HTTP_NOT_FOUND()
+        end
+
+        entity, _, err_t = dao:update({ id = entity.id }, self.args.post)
       end
 
     else
-      local id = self.params[parent_schema_name]
-
       -- TODO: composite key support
+      local parent_id = self.params[parent_schema_name]
       local parent_entity
-      if parent_entity_has_unique_name and not utils.is_valid_uuid(id) then
-        parent_entity, _, err_t = db[parent_schema_name]:select_by_name(id)
-
-      else
-        parent_entity, _, err_t = db[parent_schema_name]:select({ id = id })
-      end
+      parent_entity, _, err_t = select_by_param(db[parent_schema_name],
+                                                parent_entity_unique_field_names,
+                                                parent_id)
 
       if err_t then
         return handle_error(err_t)
@@ -289,20 +316,38 @@ end
 -- and
 --
 -- /services/:services
-local function delete_entity_endpoint(schema_name, entity_has_unique_name,
-                                      entity_name, parent_schema_name,
-                                      parent_entity_has_unique_name)
+local function delete_entity_endpoint(schema_name,
+                                      entity_unique_field_names,
+                                      entity_name,
+                                      parent_schema_name,
+                                      parent_entity_unique_field_names)
   return function(self, db, helpers)
+    local _, err_t
     if not parent_schema_name then
-      local id = self.params[schema_name]
+      local dao = db[schema_name]
 
       -- TODO: composite key support
-      local _, err_t
-      if entity_has_unique_name and not utils.is_valid_uuid(id) then
-        _, _, err_t = db[schema_name]:delete_by_name(id)
+      local id = self.params[schema_name]
+      if utils.is_valid_uuid(id) then
+        _, _, err_t = db[schema_name]:delete({ id = id })
+
+      elseif #entity_unique_field_names == 1 then
+        local fname = entity_unique_field_names[1]
+        _, _, err_t = dao["delete_by_" .. fname](dao, id)
 
       else
-        _, _, err_t = db[schema_name]:delete({ id = id })
+        local entity
+        entity, _, err_t = select_by_param(dao, entity_unique_field_names, id)
+
+        if err_t then
+          return handle_error(err_t)
+        end
+
+        if not entity then
+          return helpers.responses.send_HTTP_NOT_FOUND()
+        end
+
+        _, _, err_t = dao:delete({ id = entity.id }, self.args.post)
       end
 
       if err_t then
@@ -312,17 +357,12 @@ local function delete_entity_endpoint(schema_name, entity_has_unique_name,
       return helpers.responses.send_HTTP_NO_CONTENT()
 
     else
-      local id = self.params[parent_schema_name]
-
       -- TODO: composite key support
-      local parent_entity, _, err_t
-      if parent_entity_has_unique_name and not utils.is_valid_uuid(id) then
-        parent_entity, _, err_t = db[parent_schema_name]:select_by_name(id)
-
-      else
-        parent_entity, _, err_t = db[parent_schema_name]:select({ id = id })
-      end
-
+      local parent_id = self.params[parent_schema_name]
+      local parent_entity
+      parent_entity, _, err_t = select_by_param(db[parent_schema_name],
+                                                parent_entity_unique_field_names,
+                                                parent_id)
       if err_t then
         return handle_error(err_t)
       end
@@ -363,6 +403,9 @@ local function generate_entity_endpoints(endpoints, entity_path, ...)
 end
 
 
+
+
+
 -- Generates admin api endpoint functions
 --
 -- Examples:
@@ -397,12 +440,11 @@ local function generate_endpoints(schema, endpoints, prefix)
   generate_collection_endpoints(endpoints, collection_path, schema_name)
 
   local entity_path = fmt("%s/:%s", collection_path, schema_name)
-  local entity_name_field = schema.fields.name
-  local entity_has_unique_name = entity_name_field and entity_name_field.unique
+  local entity_unique_field_names = extract_unique_field_names(schema)
 
   -- e.g. /routes/:routes
   generate_entity_endpoints(endpoints, entity_path, schema_name,
-                            entity_has_unique_name)
+                            entity_unique_field_names)
 
   for foreign_field_name, foreign_field in schema:each_field() do
     if foreign_field.type == "foreign" then
@@ -410,15 +452,14 @@ local function generate_endpoints(schema, endpoints, prefix)
       local foreign_schema_name = foreign_schema.name
 
       local foreign_entity_path = fmt("%s/%s", entity_path, foreign_field_name)
-      local foreign_entity_name_field = foreign_schema.fields.name
-      local foreign_entity_has_unique_name = foreign_entity_name_field and foreign_entity_name_field.unique
+      local foreign_entity_unique_field_names = extract_unique_field_names(foreign_schema)
 
       -- e.g. /routes/:routes/service
       generate_entity_endpoints(endpoints, foreign_entity_path,
                                 foreign_schema_name,
-                                foreign_entity_has_unique_name,
+                                foreign_entity_unique_field_names,
                                 foreign_field_name, schema_name,
-                                entity_has_unique_name)
+                                entity_unique_field_names)
 
       -- e.g. /services/:services/routes
       local foreign_collection_path = fmt("/%s/:%s/%s", foreign_schema_name,
@@ -427,7 +468,7 @@ local function generate_endpoints(schema, endpoints, prefix)
       generate_collection_endpoints(endpoints, foreign_collection_path,
                                     schema_name, foreign_field_name,
                                     foreign_schema_name,
-                                    foreign_entity_has_unique_name)
+                                    foreign_entity_unique_field_names)
     end
   end
 
